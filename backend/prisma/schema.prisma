@@ -1,0 +1,164 @@
+// =============================================================================
+// AegisAuth - Prisma Schema
+// =============================================================================
+// WHY this structure:
+// - Users are the core entity; every auth flow revolves around them.
+// - Roles use a many-to-many join table for flexible RBAC.
+// - Permissions are optional but pre-wired for fine-grained access control.
+// - RefreshTokens are stored in the DB (with Redis cache) to enable revocation.
+// - OAuthAccounts link external providers to internal users (1 user → N providers).
+// - LoginLogs provide audit trail for security monitoring.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── User ────────────────────────────────────────────────────────────────────
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String?   // Null for OAuth-only users
+  firstName         String?
+  lastName          String?
+  isEmailVerified   Boolean   @default(false)
+  emailVerifyToken  String?   @unique
+  emailVerifyExpiry DateTime?
+  passwordResetToken  String?   @unique
+  passwordResetExpiry DateTime?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  roles         UserRole[]
+  oauthAccounts OAuthAccount[]
+  refreshTokens RefreshToken[]
+  loginLogs     LoginLog[]
+
+  @@map("users")
+}
+
+// ── Role ────────────────────────────────────────────────────────────────────
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique  // e.g., "admin", "user", "moderator"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+// ── UserRole (Join Table) ───────────────────────────────────────────────────
+// WHY a join table instead of a simple array: enables metadata (assignedAt,
+// assignedBy) and proper relational integrity.
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// ── Permission ──────────────────────────────────────────────────────────────
+model Permission {
+  id          String   @id @default(uuid())
+  action      String   // e.g., "create", "read", "update", "delete"
+  resource    String   // e.g., "users", "roles", "settings"
+  description String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  roles RolePermission[]
+
+  @@unique([action, resource])
+  @@map("permissions")
+}
+
+// ── RolePermission (Join Table) ─────────────────────────────────────────────
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ── RefreshToken ────────────────────────────────────────────────────────────
+// WHY stored in DB: Enables token revocation on logout / password change.
+// Redis caches active tokens for fast lookup; DB is source of truth.
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ── OAuthAccount ────────────────────────────────────────────────────────────
+// WHY separate from User: A user can link multiple OAuth providers (Google +
+// GitHub) to one account without duplicating user records.
+model OAuthAccount {
+  id             String   @id @default(uuid())
+  provider       String   // "google" | "github"
+  providerUserId String
+  accessToken    String?
+  refreshToken   String?
+  profile        Json?    // Raw profile data from provider
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+// ── LoginLog ────────────────────────────────────────────────────────────────
+// WHY: Security audit trail. Detect brute force, compromised accounts,
+// unusual login patterns.
+model LoginLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  email     String
+  ipAddress String?
+  userAgent String?
+  success   Boolean
+  failReason String?  // e.g., "invalid_password", "account_locked"
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([email])
+  @@index([createdAt])
+  @@map("login_logs")
+}

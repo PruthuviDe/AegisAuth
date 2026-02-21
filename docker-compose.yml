@@ -1,0 +1,44 @@
+# =============================================================================
+# AegisAuth - Docker Compose
+# =============================================================================
+# WHY: Docker Compose ensures every developer gets an identical environment.
+# PostgreSQL for persistent data, Redis for token caching and rate limiting.
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegisauth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aegisauth
+      POSTGRES_PASSWORD: aegisauth_secret
+      POSTGRES_DB: aegisauth
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aegisauth']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aegisauth-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: redis-server --requirepass aegisauth_redis_secret
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'aegisauth_redis_secret', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
