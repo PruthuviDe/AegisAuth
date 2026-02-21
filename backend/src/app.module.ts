@@ -16,6 +16,8 @@ import { PrismaModule } from './prisma';
 import { RedisModule } from './redis';
 import { AuthModule } from './modules/auth';
 import { UsersModule } from './modules/users';
+import { AdminModule } from './modules/admin/admin.module';
+import { RolesModule } from './modules/roles/roles.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { UsersModule } from './modules/users';
     // ── Feature Modules ────────────────────────────────────────────────
     AuthModule,
     UsersModule,
+    RolesModule,
+    AdminModule,
   ],
   providers: [
     {

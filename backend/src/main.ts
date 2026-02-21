@@ -20,6 +20,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters';
 import { TransformInterceptor } from './common/interceptors';
+import { RolesService } from './modules/roles/roles.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -71,6 +72,10 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
     logger.log('Swagger docs available at /api/docs');
   }
+
+  // ── Seed Default Roles ────────────────────────────────────────────────
+  const rolesService = app.get(RolesService);
+  await rolesService.seedDefaultRoles();
 
   // ── Start ──────────────────────────────────────────────────────────────
   const port = configService.get<number>('PORT', 3000);

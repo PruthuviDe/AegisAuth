@@ -209,6 +209,23 @@ export class UsersService {
     });
   }
 
+  // ── Toggle Active Status ─────────────────────────────────────────────────
+  async toggleActiveStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !user.isActive },
+      include: { roles: { include: { role: true } } },
+    });
+
+    this.logger.log(`User ${userId} isActive set to ${updated.isActive}`);
+    return this.sanitizeUser(updated);
+  }
+
   // ── Sanitize User (strip sensitive fields) ───────────────────────────────
   // WHY: Never return passwordHash, tokens, etc. to the client.
   private sanitizeUser(user: any) {
